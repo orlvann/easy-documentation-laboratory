@@ -6,6 +6,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -16,3 +17,46 @@ jobs:
         env:
           CLICKUP_TOKEN: ${{ secrets.CLICKUP_TOKEN }}
         run: python scripts/process_docs.py
+
+      - name: Ship to Portal
+        env:
+          DEST_TOKEN: ${{ secrets.DOCS_PORTAL_PAT }}
+        run: |
+          # Define the version folder
+          SHA_SHORT=$(git rev-parse --short HEAD)
+          TARGET_DIR="features/$SHA_SHORT"
+
+          # Clone the portal repo
+          git clone https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git portal
+          mkdir -p portal/$TARGET_DIR
+
+          # 1. Copy the requirement file
+          cp docs/requirements.md portal/$TARGET_DIR/
+
+          # 2. CREATE the index.html inside that specific folder
+          cat <<EOF > portal/$TARGET_DIR/index.html
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Spec Reader</title>
+              <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+          </head>
+          <body class="markdown-body" style="padding:45px;">
+              <div id="content">Loading...</div>
+              <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+              <script>
+                  fetch('requirements.md')
+                      .then(r => r.text())
+                      .then(t => document.getElementById('content').innerHTML = marked.parse(t));
+              </script>
+          </body>
+          </html>
+          EOF
+
+          # Push changes
+          cd portal
+          git config user.name "Robot"
+          git config user.email "robot@orlvann.com"
+          git add .
+          git commit -m "Add docs for $SHA_SHORT"
+          git push
