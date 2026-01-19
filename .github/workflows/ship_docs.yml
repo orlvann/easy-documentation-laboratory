@@ -22,26 +22,22 @@ jobs:
         env:
           DEST_TOKEN: ${{ secrets.DOCS_PORTAL_PAT }}
         run: |
-          # 1. Get the 7-character ID
           SHA_SHORT=$(git rev-parse --short HEAD)
+          TARGET_DIR="features/$SHA_SHORT"
 
-          # 2. Setup Portal Repo
           git clone https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git portal
           cd portal
+          mkdir -p $TARGET_DIR
 
-          # 3. Create the EXACT folder ClickUp is looking for
-          mkdir -p features/$SHA_SHORT
+          # We copy the spec and rename it to 'data.md' to avoid any confusion
+          cp ../docs/requirements.md $TARGET_DIR/data.md
 
-          # 4. Copy the file into that folder
-          cp ../docs/requirements.md features/$SHA_SHORT/requirements.md
-
-          # 5. Create the index.html inside that SAME folder
-          cat <<EOF > features/$SHA_SHORT/index.html
+          # We create the reader to look specifically for 'data.md'
+          cat <<EOF > $TARGET_DIR/index.html
           <!DOCTYPE html>
           <html>
           <head>
               <meta charset="UTF-8">
-              <title>Spec Reader</title>
               <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
           </head>
           <body class="markdown-body" style="padding: 45px;">
@@ -50,8 +46,9 @@ jobs:
               <script>
                   async function load() {
                       try {
-                          const r = await fetch('requirements.md');
-                          if (!r.ok) throw new Error("GitHub Pages is still building. Refresh in 30 seconds.");
+                          // Look for data.md in THIS folder
+                          const r = await fetch('data.md');
+                          if (!r.ok) throw new Error("File not found yet.");
                           const t = await r.text();
                           document.getElementById('content').innerHTML = marked.parse(t);
                       } catch (e) {
@@ -64,7 +61,6 @@ jobs:
           </html>
           EOF
 
-          # 6. Push to the Portal
           git config user.name "Robot"
           git config user.email "robot@orlvann.com"
           git add .
