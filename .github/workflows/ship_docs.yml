@@ -22,38 +22,64 @@ jobs:
         env:
           DEST_TOKEN: ${{ secrets.DOCS_PORTAL_PAT }}
         run: |
-          # Define the version folder
+          # Define the version folder based on the current commit
           SHA_SHORT=$(git rev-parse --short HEAD)
           TARGET_DIR="features/$SHA_SHORT"
 
-          # Clone the portal repo
+          # Clone the portal repo using the access token
           git clone https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git portal
           mkdir -p portal/$TARGET_DIR
 
-          # 1. Copy the requirement file
+          # 1. Copy the requirement file to the versioned folder
           cp docs/requirements.md portal/$TARGET_DIR/
 
-          # 2. CREATE the index.html inside that specific folder
+          # 2. CREATE the index.html with a stable and robust reader
           cat <<EOF > portal/$TARGET_DIR/index.html
           <!DOCTYPE html>
           <html>
           <head>
-              <title>Spec Reader</title>
+              <meta charset="UTF-8">
+              <title>Spec Reader: $SHA_SHORT</title>
               <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+              <style>
+                  body { box-sizing: border-box; min-width: 200px; max-width: 980px; margin: 0 auto; padding: 45px; }
+                  #error { color: #d73a49; font-family: sans-serif; font-weight: bold; display: none; padding: 20px; border: 1px solid #d73a49; border-radius: 6px; }
+              </style>
           </head>
-          <body class="markdown-body" style="padding:45px;">
-              <div id="content">Loading...</div>
-              <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+          <body class="markdown-body">
+              <div id="error">Error: Could not load the specification.</div>
+              <div id="content">⏳ Loading Specification...</div>
+
+              <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/lib/marked.umd.min.js"></script>
               <script>
-                  fetch('requirements.md')
-                      .then(r => r.text())
-                      .then(t => document.getElementById('content').innerHTML = marked.parse(t));
+                  async function loadSpec() {
+                      const contentDiv = document.getElementById('content');
+                      const errorDiv = document.getElementById('error');
+                      
+                      try {
+                          // Fetch the markdown file located in the same folder
+                          const response = await fetch('requirements.md');
+                          if (!response.ok) throw new Error('File requirements.md not found or server error (' + response.status + ')');
+                          
+                          const text = await response.text();
+                          
+                          // Use marked to parse the markdown text
+                          contentDiv.innerHTML = marked.parse(text);
+                      } catch (err) {
+                          console.error('Reader Error:', err);
+                          contentDiv.style.display = 'none';
+                          errorDiv.style.display = 'block';
+                          errorDiv.innerText = "Reader Error: " + err.message;
+                      }
+                  }
+                  // Start the loading process
+                  loadSpec();
               </script>
           </body>
           </html>
           EOF
 
-          # Push changes
+          # Push the new versioned folder to the Portal repo
           cd portal
           git config user.name "Robot"
           git config user.email "robot@orlvann.com"
