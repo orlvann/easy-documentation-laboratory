@@ -20,11 +20,21 @@
     <div id="content">Loading Specification...</div>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>
-      // This script automatically finds the requirements.md file in the folder
-      fetch('requirements.md')
-        .then((response) => response.text())
+      // This script automatically finds requirements.md in the current folder
+      const path = window.location.pathname.endsWith('/')
+        ? 'requirements.md'
+        : '/requirements.md';
+      fetch(path)
+        .then((response) => {
+          if (!response.ok) throw new Error('Document not found');
+          return response.text();
+        })
         .then((text) => {
           document.getElementById('content').innerHTML = marked.parse(text);
+        })
+        .catch((err) => {
+          document.getElementById('content').innerHTML =
+            '<h1>404</h1><p>Specification file not found in this folder.</p>';
         });
     </script>
   </body>
