@@ -1,5 +1,6 @@
 name: Ship Docs
-on: [push]
+on:
+  push:
 
 jobs:
   build-and-ship:
@@ -12,7 +13,15 @@ jobs:
         with:
           python-version: '3.9'
 
-      - run: pip install requests
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip requests
+
+      - name: Compute vars
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Update ClickUp
         env:
@@ -22,15 +31,15 @@ jobs:
       - name: Ship to Portal
         env:
           DEST_TOKEN: ${{ secrets.DOCS_PORTAL_PAT }}
+          SHA_SHORT: ${{ steps.vars.outputs.sha_short }}
+        shell: bash
         run: |
-          SHA_SHORT=$(git rev-parse --short HEAD)
-          TARGET_DIR="features/$SHA_SHORT"
+          set -euo pipefail
 
-          # Save the current directory for copying
-          WORKSPACE_DIR=$(pwd)
+          TARGET_DIR="features/${SHA_SHORT}"
+          WORKSPACE_DIR="$(pwd)"
 
-          # Clone the portal repo
-          git clone https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git portal
+          git clone "https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git" portal
           cd portal
 
           git config user.name "Bot"
@@ -39,56 +48,90 @@ jobs:
           # Disable Jekyll so GitHub Pages serves everything under features/
           touch .nojekyll
 
-          # Prepare the feature directory and copy documentation
           mkdir -p "${TARGET_DIR}"
           cp "${WORKSPACE_DIR}/docs/requirements.md" "${TARGET_DIR}/index.md"
 
-          # Simple HTML wrapper to render the Markdown file
           cat > "${TARGET_DIR}/index.html" <<'HTMLEOF'
           <!DOCTYPE html>
-          <html>
-          <head>
-              <meta charset="UTF-8">
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
               <title>Documentation</title>
-              <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+
+              <!-- GitHub-like typography -->
+              <link
+                rel="stylesheet"
+                href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css"
+              />
+
               <style>
-                  .markdown-body { padding: 45px; max-width: 980px; margin: 0 auto; }
-                  .loading { text-align: center; padding: 100px; color: #666; }
+                body {
+                  min-height: 100vh;
+                  margin: 0;
+                  background: linear-gradient(135deg, #ffe6f0 0%, #e6f0ff 100%);
+                }
+
+                .markdown-body {
+                  padding: 45px;
+                  max-width: 980px;
+                  margin: 0 auto;
+                  background: rgba(255, 255, 255, 0.85);
+                  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+                  border-radius: 10px;
+                }
+
+                .loading {
+                  text-align: center;
+                  padding: 100px;
+                  color: #666;
+                }
               </style>
-          </head>
-          <body class="markdown-body">
-              <div id="content" class="loading">⏳ Loading documentation...</div>
+            </head>
+
+            <body>
+              <div id="content" class="markdown-body loading">⏳ Loading documentation...</div>
+
               <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/lib/marked.umd.min.js"></script>
               <script>
-                  async function load() {
-                      try {
-                          const response = await fetch('index.md');
-                          if (!response.ok) throw new Error('Not found');
-                          const markdown = await response.text();
-                          document.getElementById('content').innerHTML = marked.parse(markdown);
-                      } catch (error) {
-                          document.getElementById('content').innerHTML =
-                              '<h1>Error Loading Documentation</h1><p>File not found.</p>';
-                      }
+                async function load() {
+                  try {
+                    const response = await fetch("index.md", { cache: "no-store" });
+                    if (!response.ok) throw new Error("Not found");
+                    const markdown = await response.text();
+                    document.getElementById("content").classList.remove("loading");
+                    document.getElementById("content").innerHTML = marked.parse(markdown);
+                  } catch (error) {
+                    document.getElementById("content").innerHTML =
+                      "<h1>Error Loading Documentation</h1><p>File not found.</p>";
                   }
-                  load();
+                }
+                load();
               </script>
-          </body>
+            </body>
           </html>
           HTMLEOF
 
-          # Commit and push changes
           git add -A
-          git commit -m "docs: release ${SHA_SHORT}"
+
+          # Don't fail the workflow if there are no changes
+          git commit -m "docs: release ${SHA_SHORT}" || echo "No changes to commit."
+
           git push origin main
 
       - name: Trigger Pages Build
+        env:
+          DEST_TOKEN: ${{ secrets.DOCS_PORTAL_PAT }}
+          SHA_SHORT: ${{ steps.vars.outputs.sha_short }}
+        shell: bash
         run: |
-          # Trigger GitHub Pages rebuild
-          curl -X POST \
+          set -euo pipefail
+
+          curl -sS -X POST \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.DOCS_PORTAL_PAT }}" \
-            https://api.github.com/repos/orlvann/Company-Docs-Portal/pages/builds
+            -H "Authorization: Bearer ${DEST_TOKEN}" \
+            "https://api.github.com/repos/orlvann/Company-Docs-Portal/pages/builds"
+
           echo "✅ Pages build triggered!"
-          echo "📄 Your docs will be available in 1–2 minutes at:"
+          echo "📄 Your docs will be available at:"
           echo "https://orlvann.github.io/Company-Docs-Portal/features/${SHA_SHORT}/"
