@@ -1,5 +1,6 @@
 name: Ship Docs
 on: [push]
+
 jobs:
   build-and-ship:
     runs-on: ubuntu-latest
@@ -25,27 +26,25 @@ jobs:
           SHA_SHORT=$(git rev-parse --short HEAD)
           TARGET_DIR="features/$SHA_SHORT"
 
-          # Save the current directory
+          # Save the current directory for copying
           WORKSPACE_DIR=$(pwd)
 
+          # Clone the portal repo
           git clone https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git portal
           cd portal
 
           git config user.name "Bot"
           git config user.email "bot@orlvann.com"
 
-          mkdir -p $TARGET_DIR
+          # Disable Jekyll so GitHub Pages serves everything under features/
+          touch .nojekyll
 
-          # Use absolute path to copy file
-          cp "${WORKSPACE_DIR}/docs/requirements.md" $TARGET_DIR/index.md
+          # Prepare the feature directory and copy documentation
+          mkdir -p "${TARGET_DIR}"
+          cp "${WORKSPACE_DIR}/docs/requirements.md" "${TARGET_DIR}/index.md"
 
-          # Verify the file was copied
-          echo "Checking if index.md exists:"
-          ls -la $TARGET_DIR/
-          echo "Content of index.md:"
-          head -5 $TARGET_DIR/index.md
-
-          cat > $TARGET_DIR/index.html << 'HTMLEOF'
+          # Simple HTML wrapper to render the Markdown file
+          cat > "${TARGET_DIR}/index.html" <<'HTMLEOF'
           <!DOCTYPE html>
           <html>
           <head>
@@ -68,7 +67,7 @@ jobs:
                           const markdown = await response.text();
                           document.getElementById('content').innerHTML = marked.parse(markdown);
                       } catch (error) {
-                          document.getElementById('content').innerHTML = 
+                          document.getElementById('content').innerHTML =
                               '<h1>Error Loading Documentation</h1><p>File not found.</p>';
                       }
                   }
@@ -78,22 +77,18 @@ jobs:
           </html>
           HTMLEOF
 
+          # Commit and push changes
           git add -A
-          git commit -m "docs: release $SHA_SHORT"
+          git commit -m "docs: release ${SHA_SHORT}"
           git push origin main
-
-          echo "✅ Files pushed to Company-Docs-Portal"
 
       - name: Trigger Pages Build
         run: |
-          SHA_SHORT=$(git rev-parse --short HEAD)
-
-          # Trigger GitHub Pages rebuild via API
+          # Trigger GitHub Pages rebuild
           curl -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.DOCS_PORTAL_PAT }}" \
             https://api.github.com/repos/orlvann/Company-Docs-Portal/pages/builds
-
           echo "✅ Pages build triggered!"
-          echo "📄 Your docs will be available in 1-2 minutes at:"
-          echo "https://orlvann.github.io/Company-Docs-Portal/features/$SHA_SHORT/"
+          echo "📄 Your docs will be available in 1–2 minutes at:"
+          echo "https://orlvann.github.io/Company-Docs-Portal/features/${SHA_SHORT}/"
