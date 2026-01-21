@@ -5,105 +5,96 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      
+
       - run: pip install requests
-      
+
       - name: Update ClickUp
         env:
           CLICKUP_TOKEN: ${{ secrets.CLICKUP_TOKEN }}
         run: python scripts/process_docs.py
-      
+
       - name: Ship to Portal
         env:
           DEST_TOKEN: ${{ secrets.DOCS_PORTAL_PAT }}
         run: |
-          set -e  # Exit on any error
-          
+          set -e
+
           SHA_SHORT=$(git rev-parse --short HEAD)
           TARGET_DIR="features/$SHA_SHORT"
-          
+
           echo "📦 Cloning Company-Docs-Portal..."
           git clone https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git portal
-          
+
           cd portal
-          
+
           echo "🔧 Configuring git..."
           git config user.name "Documentation Bot"
           git config user.email "robot@orlvann.com"
-          
+
           echo "📁 Creating directory: $TARGET_DIR"
           mkdir -p $TARGET_DIR
-          
+
           echo "📄 Copying documentation..."
           cp ../docs/requirements.md $TARGET_DIR/index.md
-          
+
           echo "🌐 Creating HTML viewer..."
-          cat <<'EOF' > $TARGET_DIR/index.html
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Documentation</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
-    <style>
-        .markdown-body { 
-            padding: 45px; 
-            max-width: 980px; 
-            margin: 0 auto; 
-        }
-        .loading { 
-            text-align: center; 
-            padding: 100px; 
-            color: #666; 
-        }
-    </style>
-</head>
-<body class="markdown-body">
-    <div id="content" class="loading">⏳ Loading documentation...</div>
-    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/lib/marked.umd.min.js"></script>
-    <script>
-        async function load() {
-            try {
-                const response = await fetch('index.md');
-                if (!response.ok) {
-                    throw new Error('Documentation not found (HTTP ' + response.status + ')');
-                }
-                const markdown = await response.text();
-                document.getElementById('content').innerHTML = marked.parse(markdown);
-            } catch (error) {
-                document.getElementById('content').innerHTML = 
-                    '<h1>⚠️ Error Loading Documentation</h1>' +
-                    '<p>The documentation file could not be loaded.</p>' +
-                    '<p><em>Error: ' + error.message + '</em></p>';
-                console.error('Failed to load documentation:', error);
-            }
-        }
-        load();
-    </script>
-</body>
-</html>
-EOF
-          
+          cat > $TARGET_DIR/index.html << 'HTMLEOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="UTF-8">
+              <title>Documentation</title>
+              <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+              <style>
+                  .markdown-body { padding: 45px; max-width: 980px; margin: 0 auto; }
+                  .loading { text-align: center; padding: 100px; color: #666; }
+              </style>
+          </head>
+          <body class="markdown-body">
+              <div id="content" class="loading">⏳ Loading documentation...</div>
+              <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/lib/marked.umd.min.js"></script>
+              <script>
+                  async function load() {
+                      try {
+                          const response = await fetch('index.md');
+                          if (!response.ok) {
+                              throw new Error('Documentation not found');
+                          }
+                          const markdown = await response.text();
+                          document.getElementById('content').innerHTML = marked.parse(markdown);
+                      } catch (error) {
+                          document.getElementById('content').innerHTML = 
+                              '<h1>Error Loading Documentation</h1>' +
+                              '<p>The documentation file could not be loaded.</p>';
+                          console.error('Failed to load documentation:', error);
+                      }
+                  }
+                  load();
+              </script>
+          </body>
+          </html>
+          HTMLEOF
+
           echo "✅ Files created:"
           ls -lah $TARGET_DIR/
-          
+
           echo "📝 Staging files..."
           git add .
-          
+
           echo "💾 Committing changes..."
           if git diff --staged --quiet; then
-            echo "⚠️ No changes detected - files may already exist"
+            echo "⚠️ No changes detected"
             exit 0
           fi
-          
+
           git commit -m "docs: release version $SHA_SHORT"
-          
+
           echo "🚀 Pushing to GitHub..."
           git push origin main
-          
+
           echo "✅ Successfully deployed to features/$SHA_SHORT"
