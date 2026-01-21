@@ -22,27 +22,18 @@ jobs:
         env:
           DEST_TOKEN: ${{ secrets.DOCS_PORTAL_PAT }}
         run: |
-          set -e
-
           SHA_SHORT=$(git rev-parse --short HEAD)
           TARGET_DIR="features/$SHA_SHORT"
 
-          echo "📦 Cloning Company-Docs-Portal..."
           git clone https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git portal
-
           cd portal
 
-          echo "🔧 Configuring git..."
-          git config user.name "Documentation Bot"
-          git config user.email "robot@orlvann.com"
+          git config user.name "Bot"
+          git config user.email "bot@orlvann.com"
 
-          echo "📁 Creating directory: $TARGET_DIR"
           mkdir -p $TARGET_DIR
-
-          echo "📄 Copying documentation..."
           cp ../docs/requirements.md $TARGET_DIR/index.md
 
-          echo "🌐 Creating HTML viewer..."
           cat > $TARGET_DIR/index.html << 'HTMLEOF'
           <!DOCTYPE html>
           <html>
@@ -62,16 +53,12 @@ jobs:
                   async function load() {
                       try {
                           const response = await fetch('index.md');
-                          if (!response.ok) {
-                              throw new Error('Documentation not found');
-                          }
+                          if (!response.ok) throw new Error('Not found');
                           const markdown = await response.text();
                           document.getElementById('content').innerHTML = marked.parse(markdown);
                       } catch (error) {
                           document.getElementById('content').innerHTML = 
-                              '<h1>Error Loading Documentation</h1>' +
-                              '<p>The documentation file could not be loaded.</p>';
-                          console.error('Failed to load documentation:', error);
+                              '<h1>Error Loading Documentation</h1><p>File not found.</p>';
                       }
                   }
                   load();
@@ -80,21 +67,22 @@ jobs:
           </html>
           HTMLEOF
 
-          echo "✅ Files created:"
-          ls -lah $TARGET_DIR/
-
-          echo "📝 Staging files..."
-          git add .
-
-          echo "💾 Committing changes..."
-          if git diff --staged --quiet; then
-            echo "⚠️ No changes detected"
-            exit 0
-          fi
-
-          git commit -m "docs: release version $SHA_SHORT"
-
-          echo "🚀 Pushing to GitHub..."
+          git add -A
+          git commit -m "docs: release $SHA_SHORT"
           git push origin main
 
-          echo "✅ Successfully deployed to features/$SHA_SHORT"
+          echo "✅ Files pushed to Company-Docs-Portal"
+
+      - name: Trigger Pages Build
+        run: |
+          SHA_SHORT=$(git rev-parse --short HEAD)
+
+          # Trigger GitHub Pages rebuild via API
+          curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.DOCS_PORTAL_PAT }}" \
+            https://api.github.com/repos/orlvann/Company-Docs-Portal/pages/builds
+
+          echo "✅ Pages build triggered!"
+          echo "📄 Your docs will be available in 1-2 minutes at:"
+          echo "https://orlvann.github.io/Company-Docs-Portal/features/$SHA_SHORT/"
