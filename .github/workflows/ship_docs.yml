@@ -25,6 +25,9 @@ jobs:
           SHA_SHORT=$(git rev-parse --short HEAD)
           TARGET_DIR="features/$SHA_SHORT"
 
+          # Save the current directory
+          WORKSPACE_DIR=$(pwd)
+
           git clone https://x-access-token:${DEST_TOKEN}@github.com/orlvann/Company-Docs-Portal.git portal
           cd portal
 
@@ -32,7 +35,15 @@ jobs:
           git config user.email "bot@orlvann.com"
 
           mkdir -p $TARGET_DIR
-          cp ../docs/requirements.md $TARGET_DIR/index.md
+
+          # Use absolute path to copy file
+          cp "${WORKSPACE_DIR}/docs/requirements.md" $TARGET_DIR/index.md
+
+          # Verify the file was copied
+          echo "Checking if index.md exists:"
+          ls -la $TARGET_DIR/
+          echo "Content of index.md:"
+          head -5 $TARGET_DIR/index.md
 
           cat > $TARGET_DIR/index.html << 'HTMLEOF'
           <!DOCTYPE html>
